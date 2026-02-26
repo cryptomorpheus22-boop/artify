@@ -103,16 +103,118 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   });
 
-  // ---- Track Art Order Clicks ----
+  // ---- UTM Parameter Tracking ----
+  // Capture UTM params from Meta Ads for attribution
+  var urlParams = new URLSearchParams(window.location.search);
+  var utmSource = urlParams.get('utm_source') || 'direct';
+  var utmMedium = urlParams.get('utm_medium') || 'none';
+  var utmCampaign = urlParams.get('utm_campaign') || 'none';
+  var utmContent = urlParams.get('utm_content') || 'none';
+
+  // Store UTM params in sessionStorage for cross-page tracking
+  if (urlParams.get('utm_source')) {
+    sessionStorage.setItem('artify_utm', JSON.stringify({
+      source: utmSource, medium: utmMedium, campaign: utmCampaign, content: utmContent
+    }));
+  }
+
+  // ---- Meta Pixel: ViewContent on Gallery Scroll ----
+  var gallerySection = document.getElementById('gallery');
+  var galleryViewed = false;
+
+  if (gallerySection) {
+    var galleryObserver = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting && !galleryViewed) {
+          galleryViewed = true;
+          if (typeof fbq === 'function') {
+            fbq('track', 'ViewContent', {
+              content_name: 'Art Style Gallery',
+              content_category: 'gallery',
+              content_type: 'product_group'
+            });
+          }
+          if (typeof gtag === 'function') {
+            gtag('event', 'view_gallery', { event_category: 'engagement' });
+          }
+        }
+      });
+    }, { threshold: 0.3 });
+    galleryObserver.observe(gallerySection);
+  }
+
+  // ---- Meta Pixel: Track Filter Pill Clicks ----
+  pills.forEach(function (pill) {
+    pill.addEventListener('click', function () {
+      var category = pill.dataset.category;
+      if (category !== 'all') {
+        if (typeof fbq === 'function') {
+          fbq('trackCustom', 'ArtStyleFilter', { style_category: category });
+        }
+        if (typeof gtag === 'function') {
+          gtag('event', 'filter_style', { art_category: category });
+        }
+      }
+    });
+  });
+
+  // ---- Track Art Order Clicks (Enhanced) ----
   document.querySelectorAll('.art-card__btn').forEach(function (btn) {
     btn.addEventListener('click', function () {
       var card = this.closest('.art-card');
       var styleName = card.querySelector('.art-card__title').textContent;
-      if (typeof gtag === 'function') {
-        gtag('event', 'art_order_click', { art_style: styleName, value: 50, currency: 'BWP' });
-      }
+      var styleCategory = card.dataset.category;
+
+      // Retrieve stored UTM params
+      var storedUtm = JSON.parse(sessionStorage.getItem('artify_utm') || '{}');
+
+      // Meta Pixel: Standard InitiateCheckout event (used by Meta Ads optimization)
       if (typeof fbq === 'function') {
-        fbq('track', 'InitiateCheckout', { content_name: styleName, value: 50, currency: 'BWP' });
+        fbq('track', 'InitiateCheckout', {
+          content_name: styleName,
+          content_category: styleCategory,
+          content_type: 'product',
+          value: 50,
+          currency: 'BWP',
+          num_items: 1
+        });
+
+        // Meta Pixel: Custom event for granular reporting
+        fbq('trackCustom', 'ArtOrderClick', {
+          art_style: styleName,
+          art_category: styleCategory,
+          value: 50,
+          currency: 'BWP',
+          utm_source: storedUtm.source || 'direct',
+          utm_campaign: storedUtm.campaign || 'none'
+        });
+      }
+
+      // GA4 event
+      if (typeof gtag === 'function') {
+        gtag('event', 'art_order_click', {
+          art_style: styleName,
+          art_category: styleCategory,
+          value: 50,
+          currency: 'BWP',
+          utm_source: storedUtm.source || 'direct',
+          utm_campaign: storedUtm.campaign || 'none'
+        });
+      }
+    });
+  });
+
+  // ---- Track All WhatsApp Link Clicks (Header, CTA, Float) ----
+  document.querySelectorAll('a[href*="wa.me"]').forEach(function (link) {
+    // Skip art card buttons (already tracked above)
+    if (link.classList.contains('art-card__btn')) return;
+
+    link.addEventListener('click', function () {
+      if (typeof fbq === 'function') {
+        fbq('track', 'Contact', { content_name: 'WhatsApp General Inquiry' });
+      }
+      if (typeof gtag === 'function') {
+        gtag('event', 'whatsapp_click', { link_location: link.closest('section') ? link.closest('section').id : 'header' });
       }
     });
   });
